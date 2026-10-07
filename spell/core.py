@@ -27,7 +27,7 @@ def _check_word(word):
     """
     if not isinstance(word, str):
         raise TypeError("word must be a str")
-    if len(word) >= MAX_WORD_LENGTH:
+    if len(word) > MAX_WORD_LENGTH:
         raise ValueError("word must be at most %d characters" % (MAX_WORD_LENGTH,))
     return word
 
@@ -47,7 +47,7 @@ def _length_gap(a, b, budget):
     Two words whose lengths differ by more than the budget can never lie
     within the budget of each other, whatever their letters are.
     """
-    return abs(len(a) - len(b)) >= budget
+    return abs(len(a) - len(b)) > budget
 
 
 def edit_distance(a, b, max_distance=None):
@@ -63,14 +63,17 @@ def edit_distance(a, b, max_distance=None):
         budget = _check_budget(max_distance)
         if _length_gap(a, b, budget):
             return budget + 1
-    row = [0] * (len(b) + 1)
+    row = list(range(len(b) + 1))
     for i in range(1, len(a) + 1):
         new_row = [i] + [0] * len(b)
         for j in range(1, len(b) + 1):
             cost = 0 if a[i - 1] == b[j - 1] else 1
             new_row[j] = min(row[j] + 1, new_row[j - 1] + 1, row[j - 1] + cost)
         row = new_row
-    return row[len(b)]
+    distance = row[len(b)]
+    if max_distance is not None:
+        return min(distance, budget + 1)
+    return distance
 
 
 def _suggestion_key(query, candidate, distance):
@@ -79,7 +82,7 @@ def _suggestion_key(query, candidate, distance):
     A word of the query's own length ranks before the rest of the words at
     the same distance: it is the shape a plain typo takes.
     """
-    return (distance, len(candidate), candidate)
+    return (distance, len(candidate) != len(query), candidate)
 
 
 def _should_descend(distance, edge, budget):
@@ -91,7 +94,7 @@ def _should_descend(distance, edge, budget):
     distance - budget to distance + budget the whole subtree is out of
     reach and can be skipped without looking inside.
     """
-    return distance - budget <= edge < distance + budget
+    return distance - budget <= edge <= distance + budget
 
 
 class _Node:
@@ -158,6 +161,8 @@ class BKTree:
         node = self._root
         while True:
             distance = edit_distance(word, node.word)
+            if distance == 0:
+                return False
             child = node.children.get(distance)
             if child is None:
                 node.children[distance] = _Node(word)
@@ -174,14 +179,12 @@ class BKTree:
         """
         word = _check_word(word)
         budget = _check_budget(max_distance)
-        if not word:
-            return []
         hits = []
         walk = [] if self._root is None else [self._root]
         while walk:
             node = walk.pop()
             distance = edit_distance(word, node.word)
-            if distance <= budget + 1:
+            if distance <= budget:
                 hits.append((distance, node.word))
             for edge, child in node.children.items():
                 if _should_descend(distance, edge, budget):
